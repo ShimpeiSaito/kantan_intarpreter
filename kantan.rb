@@ -1,4 +1,5 @@
 require 'strscan'
+require 'pp'
 
 class Kantan
   # 演算記号表
@@ -17,6 +18,7 @@ class Kantan
     '終' => :block_end,
     '如' => :if,
     '循' => :loop,
+    '開' => :loop_start,
     '刷' => :print,
     '「' => :string_start,
     '」' => :string_end,
@@ -28,9 +30,9 @@ class Kantan
 
   @@space = {}
 
-  @@code = "" #入力されたソースコードを格納
+  @@code = '' # 入力されたソースコードを格納
 
-  @@variable = ''
+  @@variables = {}
 
   def initialize
     file = ARGV[0]
@@ -73,10 +75,7 @@ class Kantan
         @@space[eval(exp[1])] = eval(exp[2])
         # p @@space
       when :print
-        val = exp[1]
-        if exp[1].nil?
-          val = @@space[@@variable]
-        end
+        val = eval(exp[1])
         puts val
       when :boolean
         exp[1]
@@ -101,8 +100,9 @@ class Kantan
 
   def sentences
     unless (s = sentence)
-      raise Exception, "あるべき文が見つからない"
+      raise Exception, 'あるべき文が見つからない'
     end
+
     result = [:block, s]
     while (s = sentence)
       result << s
@@ -112,10 +112,12 @@ class Kantan
 
   def sentence
     token = get_token
+    return if token == :bad_token
+
     # p token
     case token
     when :if
-      return 0
+      return conditionals
     when :loop
       return 0
     when :print
@@ -130,45 +132,63 @@ class Kantan
     end
   end
 
+  def conditionals
+    token = get_token
+    con_exp = get_token
+    true_block = get_token
+    false_block = get_token
+
+    return [:if, con_exp, true_block, false_block]
+  end
+
   def assignment
     var = get_token
+    # p var
+    raise Exception, '変数が正しくない' unless var.instance_of?(String)
+
     token = get_token
     if token == :assign
       token = get_token
-      if token == :true
+      case token
+      when :true
         val = true
-      elsif token == :false
+      when :false
         val = false
-      elsif token == :string_start
+      when :string_start
         val = get_token
         get_token
       else
         unget_token
         val = expression
+        @@variables[var] = val
       end
       return [:assignment, var, val]
+    else
+      raise Exception, '入がない'
     end
   end
 
   def print
-      token = get_token
-      if token == :true
-        val = true
-      elsif token == :false
-        val = false
-      elsif token == :string_start
-        val = get_token
-        get_token
-      else
-        val = expression
-      end
-      return [:print, val]
+    token = get_token
+    case token
+    when :true
+      val = true
+    when :false
+      val = false
+    when :string_start
+      val = get_token
+      get_token
+    else
+      val = expression
+    end
+    return [:print, val]
   end
 
   # Expr -> Term (('+'|'-') Term)*
   def expression
     result = term
     token = get_token
+
     while (token == :add) || (token == :sub)
       result = [token, result, term]
       token = get_token
@@ -199,11 +219,13 @@ class Kantan
   # Fctr -> '(' Expr ')' | Num
   def factor
     token = get_token
+    if @@variables.key?(token)
+      return @@variables[token]
+    end
+
     case token
     when Numeric
       result = token
-    when /\A[a-zA-Z]([a-zA-Z]|[0-9]|_)*/
-      @@variable = token
     when :lpar
       result = expression
       t = get_token # 閉じカッコを取り除く(使用しない)
@@ -224,8 +246,10 @@ class Kantan
     # p token
     return @@keywords[token.strip] if token
 
-    token = @scanner.scan(/\A\s*[a-zA-Z]([a-zA-Z]|[0-9]|_)*/)
+    token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])*/)
     return token.strip if token
+
+    :bad_token
   end
 
   # tokenを押し戻す
