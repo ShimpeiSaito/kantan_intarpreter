@@ -133,11 +133,10 @@ class Kantan
   end
 
   def conditionals
-    token = get_token
     con_exp = get_token
     true_block = get_token
     false_block = get_token
-
+    # 条件式の左辺、比較演算子、条件式の右辺。ブロック
     return [:if, con_exp, true_block, false_block]
   end
 
@@ -147,25 +146,23 @@ class Kantan
     raise Exception, '変数が正しくない' unless var.instance_of?(String)
 
     token = get_token
-    if token == :assign
-      token = get_token
-      case token
-      when :true
-        val = true
-      when :false
-        val = false
-      when :string_start
-        val = get_token
-        get_token
-      else
-        unget_token
-        val = expression
-        @@variables[var] = val
-      end
-      return [:assignment, var, val]
+    raise Exception, '入がない' unless token == :assign
+
+    token = get_token
+    case token
+    when :true
+      val = true
+    when :false
+      val = false
+    when :string_start
+      val = get_token
+      get_token
     else
-      raise Exception, '入がない'
+      unget_token
+      val = expression
     end
+    @@variables[var] = val
+    return [:assignment, var, val]
   end
 
   def print
@@ -178,6 +175,8 @@ class Kantan
     when :string_start
       val = get_token
       get_token
+    when :bad_token
+      p 'きゃー！！！！'
     else
       val = expression
     end
@@ -231,6 +230,7 @@ class Kantan
       t = get_token # 閉じカッコを取り除く(使用しない)
       raise SyntaxError, 'Error: SyntaxError' unless t == :rpar
     else
+      pp @@variables
       raise SyntaxError, 'Error: SyntaxError1'
     end
     result
