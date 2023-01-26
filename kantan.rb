@@ -8,6 +8,10 @@ class Kantan
     '-' => :sub,
     '*' => :mul,
     '/' => :div,
+    '>' => :greater,
+    '<' => :less,
+    '>=' => :greater_equal,
+    '<=' => :less_equal,
     '(' => :lpar,
     ')' => :rpar,
     '真' => :true,
@@ -17,6 +21,8 @@ class Kantan
     '始' => :block_start,
     '終' => :block_end,
     '如' => :if,
+    '則' => :then,
+    '異' => :else,
     '循' => :loop,
     '開' => :loop_start,
     '刷' => :print,
@@ -71,12 +77,35 @@ class Kantan
         eval(exp[1]) * eval(exp[2])
       when :div
         eval(exp[1]) / eval(exp[2])
+      when :greater
+        eval(exp[1]) > eval(exp[2])
+      when :less
+        eval(exp[1]) < eval(exp[2])
+      when :greater_equal
+        eval(exp[1]) >= eval(exp[2])
+      when :less_equal
+        eval(exp[1]) <= eval(exp[2])
       when :assignment
         @@space[eval(exp[1])] = eval(exp[2])
         # p @@space
       when :print
         val = eval(exp[1])
         puts val
+      when :if
+        judge = case exp[1]
+                when true
+                  true
+                when false
+                  false
+                else
+                  eval(exp[1])
+                end
+
+        if judge
+          eval(exp[2])
+        else
+          eval(exp[3]) unless exp[3].nil?
+        end
       when :boolean
         exp[1]
       when :string
@@ -124,6 +153,8 @@ class Kantan
       return print
     when :block_start
       return 0
+    when :block_end
+      return nil
     when :end
       return sentence
     else
@@ -133,17 +164,24 @@ class Kantan
   end
 
   def conditionals
-    con_exp = get_token
-    true_block = get_token
-    false_block = get_token
-    # 条件式の左辺、比較演算子、条件式の右辺。ブロック
+    con_exp = comparison_operation
+    token = get_token
+    if token == :then
+      true_block = sentences
+    end
+
+    token = get_token
+    if token == :else
+      false_block = sentences
+    end
+    get_token # :endの削除
     return [:if, con_exp, true_block, false_block]
   end
 
   def assignment
     var = get_token
     # p var
-    raise Exception, '変数が正しくない' unless var.instance_of?(String)
+    raise Exception, '変数名が正しくない' unless var.instance_of?(String)
 
     token = get_token
     raise Exception, '入がない' unless token == :assign
@@ -156,12 +194,14 @@ class Kantan
       val = false
     when :string_start
       val = get_token
-      get_token
+      get_token # "」"の削除
     else
       unget_token
       val = expression
     end
     @@variables[var] = val
+    get_token # :endの削除
+
     return [:assignment, var, val]
   end
 
@@ -174,13 +214,28 @@ class Kantan
       val = false
     when :string_start
       val = get_token
-      get_token
+      get_token # "」"の削除
     when :bad_token
       p 'きゃー！！！！'
     else
+      unget_token
       val = expression
     end
+    get_token # :endの削除
     return [:print, val]
+  end
+
+  def comparison_operation
+    result = expression
+    token = get_token
+
+    while (token == :greater) || (token == :less) || (token == :greater_equal) || (token == :less_equal)
+      result = [token, result, expression]
+      token = get_token
+      # p result
+    end
+    unget_token
+    result
   end
 
   # Expr -> Term (('+'|'-') Term)*
@@ -202,6 +257,7 @@ class Kantan
     begin
       result = factor
       token = get_token
+      # p token
       while (token == :mul) || (token == :div)
         result = [token, result, factor]
         token = get_token
@@ -218,9 +274,9 @@ class Kantan
   # Fctr -> '(' Expr ')' | Num
   def factor
     token = get_token
-    if @@variables.key?(token)
-      return @@variables[token]
-    end
+    p token
+
+    return @@variables[token] if @@variables.key?(token)
 
     case token
     when Numeric
@@ -229,8 +285,12 @@ class Kantan
       result = expression
       t = get_token # 閉じカッコを取り除く(使用しない)
       raise SyntaxError, 'Error: SyntaxError' unless t == :rpar
+    when :true
+      result = true
+    when :false
+      result = false
     else
-      pp @@variables
+      # p token
       raise SyntaxError, 'Error: SyntaxError1'
     end
     result
@@ -242,11 +302,12 @@ class Kantan
     # p token
     return token.strip.to_i if token
 
-    token = @scanner.scan(/\A\s*(#{@@keywords.keys.map{|t|t}})/)
-    # p token
-    return @@keywords[token.strip] if token
+    # p @@keywords.keys.map{|t|t}
+    token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})/)
+    return p @@keywords[token.strip] if token && (@@keywords[token.strip])
 
     token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])*/)
+    # p token
     return token.strip if token
 
     :bad_token
