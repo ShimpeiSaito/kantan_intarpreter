@@ -83,7 +83,7 @@ class Kantan
       when :equal
         eval(exp[1]) == eval(exp[2])
       when :assignment
-        @@space[eval(exp[1])] = eval(exp[2])
+        @@space[exp[1]] = eval(exp[2])
         # p @@space
       when :print
         val = eval(exp[1])
@@ -103,6 +103,27 @@ class Kantan
         else
           eval(exp[3]) unless exp[3].nil?
         end
+      when :loop
+        judge = case exp[1]
+                when true
+                  true
+                when false
+                  false
+                else
+                  eval(exp[1])
+                end
+        while judge
+          eval(exp[2])
+          judge = case exp[1]
+                  when true
+                    true
+                  when false
+                    false
+                  else
+                    eval(exp[1])
+                  end
+          # break
+        end
       when :boolean
         exp[1]
       when :string
@@ -115,13 +136,15 @@ class Kantan
         raise SyntaxError, 'Error: SyntaxError'
       end
     else
+      return @@space[exp] if @@space.key?(exp)
+
       exp
     end
   end
 
   # パーサー
   def parse
-    p sentences
+    pp sentences
   end
 
   def sentences
@@ -150,7 +173,7 @@ class Kantan
     when :if
       return conditionals
     when :loop
-      return 0
+      return loop
     when :print
       return print
     when :block_start
@@ -163,6 +186,16 @@ class Kantan
       unget_token
       return assignment
     end
+  end
+
+  def loop
+    con_exp = comparison_operation
+    token = get_token
+    block = sentences if token == :loop_start
+
+    get_token # :endの削除
+
+    return [:loop, con_exp, block]
   end
 
   def conditionals
@@ -278,7 +311,7 @@ class Kantan
   def factor
     token = get_token
 
-    return @@variables[token] if @@variables.key?(token)
+    return token if @@variables.key?(token)
 
     case token
     when Numeric
