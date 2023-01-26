@@ -25,6 +25,7 @@ class Kantan
     '循' => :loop,
     '開' => :loop_start,
     '刷' => :print,
+    '読' => :read,
     '「' => :string_start,
     '」' => :string_end,
     '能' => :function,
@@ -86,8 +87,10 @@ class Kantan
         @@space[exp[1]] = eval(exp[2])
         # p @@space
       when :print
-        val = eval(exp[1])
-        puts val
+        val = eval(exp[1]).to_s.gsub(/改~/, "\n").gsub(/空~/, ' ')
+        print val
+      when :read
+        $stdin.gets.chomp
       when :if
         judge = case exp[1]
                 when true
@@ -168,14 +171,14 @@ class Kantan
     token = get_token
     return if token == :bad_token
 
-    # p token
+    p token
     case token
     when :if
       return conditionals
     when :loop
       return loop
     when :print
-      return print
+      return printing
     when :block_start
       return ''
     when :block_end
@@ -231,6 +234,8 @@ class Kantan
     when :string_start
       val = get_token
       get_token # "」"の削除
+    when :read
+      val = [:read]
     else
       unget_token
       val = expression
@@ -241,7 +246,7 @@ class Kantan
     return [:assignment, var, val]
   end
 
-  def print
+  def printing
     token = get_token
     case token
     when :true
@@ -251,6 +256,8 @@ class Kantan
     when :string_start
       val = get_token
       get_token # "」"の削除
+    when :read
+      val = [:read]
     when :bad_token
       p 'きゃー！！！！'
     else
@@ -341,7 +348,7 @@ class Kantan
     token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})/)
     return @@keywords[token.strip] if token && (@@keywords[token.strip])
 
-    token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])*/)
+    token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々]|~)*/)
     # p token
     return token.strip if token
 
