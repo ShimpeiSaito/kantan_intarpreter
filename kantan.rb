@@ -29,6 +29,7 @@ class Kantan
     '「' => :string_start,
     '」' => :string_end,
     '能' => :function,
+    '呼' => :call_function,
     '引' => :argument_start,
     '区' => :separator,
     '数' => :argument_end
@@ -39,6 +40,10 @@ class Kantan
   @@code = '' # 入力されたソースコードを格納
 
   @@variables = {}
+
+  @@functions = {}
+
+  @@func_names = []
 
   def initialize
     file = ARGV[0]
@@ -84,6 +89,8 @@ class Kantan
       when :equal
         eval(exp[1]) == eval(exp[2])
       when :assignment
+        return @@space[@func_name][exp[1]] = eval(exp[2]) unless @@space[@func_name].nil?
+
         @@space[exp[1]] = eval(exp[2])
         # p @@space
       when :print
@@ -127,20 +134,46 @@ class Kantan
                   end
           # break
         end
-      when :boolean
-        exp[1]
+      when :function
+        @@space[exp[1]] = exp[2]
+        # p @@space
+        @@functions[exp[1]] = exp[3]
+      when :call_function
+        @func_name = exp[1]
+        raise SyntaxError, 'Error: Different number of arguments' if @@space[@func_name].length != exp[2].length
+
+        merged_keys = []
+        if @@func_names.length.positive?
+          @@space[@@func_names.last].each do |h|
+            if exp[2].include?(h[0])
+              @@space[@func_name].merge!(Hash[*h])
+              merged_keys << h[0]
+            end
+          end
+        end
+        @@func_names << exp[1]
+
+        @@space[@func_name].each_with_index do |h, i|
+          @@space[@func_name][h[0]] = eval(exp[2][i]) unless exp[2][i].nil?
+          @@space[@func_name].delete_if { |key, _| merged_keys.include?(key) } if exp[2][i].nil?
+        end
+
+        eval(@@functions[@func_name])
+
+        @@func_names.pop
+        @func_name = @@func_names.last
       when :string
         exp[1]
-      when :true
-        true
-      when :false
-        false
       else
         raise SyntaxError, 'Error: SyntaxError'
       end
     else
+      # p @@space
+      # p exp
+      return @@space[@func_name][exp] if !@@space[@func_name].nil? && @@space[@func_name].key?(exp)
       return @@space[exp] if @@space.key?(exp)
 
+      raise SyntaxError, 'Error: Variable is not defined' if exp.is_a?(String)
       exp
     end
   end
@@ -171,12 +204,16 @@ class Kantan
     token = get_token
     return if token == :bad_token
 
-    p token
+    # p token
     case token
     when :if
       return conditionals
     when :loop
       return loop
+    when :function
+      return function
+    when :call_function
+      return call_function
     when :print
       return printing
     when :block_start
@@ -189,6 +226,53 @@ class Kantan
       unget_token
       return assignment
     end
+  end
+
+  def call_function
+    func_name = get_token
+
+    token = get_token
+    raise Exception, '引がない' unless token == :argument_start
+
+    private_variables = []
+
+    token = get_token
+    while token != :argument_end
+      unless token == :separator
+        unget_token
+        private_variables << expression
+      end
+      token = get_token
+    end
+
+    get_token # :endの削除
+
+    return [:call_function, func_name, private_variables]
+  end
+
+  def function
+    func_name = get_token
+
+    raise Exception, '関数名が正しくない' unless func_name.instance_of?(String)
+
+    token = get_token
+    raise Exception, '引がない' unless token == :argument_start
+
+    private_variables = {}
+
+    token = get_token
+    while token != :argument_end
+      private_variables[token] = nil unless token == :separator
+      token = get_token
+    end
+
+    token = get_token
+    if token == :block_start
+      unget_token
+      block = sentences
+    end
+
+    return [:function, func_name, private_variables, block]
   end
 
   def loop
@@ -219,7 +303,6 @@ class Kantan
 
   def assignment
     var = get_token
-    # p var
     raise Exception, '変数名が正しくない' unless var.instance_of?(String)
 
     token = get_token
@@ -227,12 +310,8 @@ class Kantan
 
     token = get_token
     case token
-    when :true
-      val = true
-    when :false
-      val = false
     when :string_start
-      val = get_token
+      val = [:string, get_token]
       get_token # "」"の削除
     when :read
       val = [:read]
@@ -249,12 +328,8 @@ class Kantan
   def printing
     token = get_token
     case token
-    when :true
-      val = true
-    when :false
-      val = false
     when :string_start
-      val = get_token
+      val = [:string, get_token]
       get_token # "」"の削除
     when :read
       val = [:read]
@@ -318,9 +393,11 @@ class Kantan
   def factor
     token = get_token
 
-    return token if @@variables.key?(token)
+    # return token if @@variables.key?(token)
 
     case token
+    when String
+      return token
     when Numeric
       result = token
     when :lpar
@@ -332,7 +409,7 @@ class Kantan
     when :false
       result = false
     else
-      # p token
+      p token
       raise SyntaxError, 'Error: SyntaxError1'
     end
     result
@@ -345,7 +422,7 @@ class Kantan
     return token.strip.to_i if token
 
     # p @@keywords.keys.map{|t|t}
-    token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})/)
+    token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})\s+/)
     return @@keywords[token.strip] if token && (@@keywords[token.strip])
 
     token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々]|~)*/)
