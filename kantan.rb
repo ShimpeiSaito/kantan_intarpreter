@@ -129,7 +129,12 @@ class Kantan
       raise Exception, 'あるべき文が見つからない'
     end
 
-    result = [:block, s]
+    result = if s.empty?
+               [:block]
+             else
+               [:block, s]
+             end
+
     while (s = sentence)
       result << s
     end
@@ -149,7 +154,7 @@ class Kantan
     when :print
       return print
     when :block_start
-      return 0
+      return ''
     when :block_end
       return nil
     when :end
