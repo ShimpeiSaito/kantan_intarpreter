@@ -2,7 +2,7 @@ require 'strscan'
 require 'pp'
 
 class Kantan
-  # 演算記号表
+  # 予約語表
   @@keywords = {
     '+' => :add,
     '-' => :sub,
@@ -10,8 +10,7 @@ class Kantan
     '/' => :div,
     '>' => :greater,
     '<' => :less,
-    '>=' => :greater_equal,
-    '<=' => :less_equal,
+    '=' => :equal,
     '(' => :lpar,
     ')' => :rpar,
     '真' => :true,
@@ -81,10 +80,8 @@ class Kantan
         eval(exp[1]) > eval(exp[2])
       when :less
         eval(exp[1]) < eval(exp[2])
-      when :greater_equal
-        eval(exp[1]) >= eval(exp[2])
-      when :less_equal
-        eval(exp[1]) <= eval(exp[2])
+      when :equal
+        eval(exp[1]) == eval(exp[2])
       when :assignment
         @@space[eval(exp[1])] = eval(exp[2])
         # p @@space
@@ -166,15 +163,16 @@ class Kantan
   def conditionals
     con_exp = comparison_operation
     token = get_token
-    if token == :then
-      true_block = sentences
-    end
+    true_block = sentences if token == :then
 
     token = get_token
     if token == :else
       false_block = sentences
+    else
+      unget_token
     end
     get_token # :endの削除
+
     return [:if, con_exp, true_block, false_block]
   end
 
@@ -229,7 +227,7 @@ class Kantan
     result = expression
     token = get_token
 
-    while (token == :greater) || (token == :less) || (token == :greater_equal) || (token == :less_equal)
+    while (token == :greater) || (token == :less) || (token == :equal)
       result = [token, result, expression]
       token = get_token
       # p result
@@ -274,7 +272,6 @@ class Kantan
   # Fctr -> '(' Expr ')' | Num
   def factor
     token = get_token
-    p token
 
     return @@variables[token] if @@variables.key?(token)
 
@@ -304,7 +301,7 @@ class Kantan
 
     # p @@keywords.keys.map{|t|t}
     token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})/)
-    return p @@keywords[token.strip] if token && (@@keywords[token.strip])
+    return @@keywords[token.strip] if token && (@@keywords[token.strip])
 
     token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])*/)
     # p token
