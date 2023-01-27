@@ -36,15 +36,16 @@ class Kantan
     '数' => :argument_end
   }
 
-  @@space = {}
+  @@code = '' # 入力されたソースコードの格納場所
 
-  @@code = '' # 入力されたソースコードを格納
+  @@space = {} # グローバル変数及び関数ごとのローカル変数の格納場所
 
-  @@functions = {}
+  @@functions = {} # 関数のブロック(中身)の格納場所
 
-  @@func_names = []
+  @@func_names = [] # 実行中の関数名の格納場所
 
   def initialize
+    # 実行ファイルの読み取り
     file = ARGV[0]
     lines = []
     unless file.nil?
@@ -53,13 +54,13 @@ class Kantan
       end
       @@code = lines.join
     end
+    # puts @@code # 確認用
 
-    @scanner = StringScanner.new(@@code)
+    @scanner = StringScanner.new(@@code) # スキャナーインスタンスの生成
 
-    puts @@code
-
-    eval(parse) # 意味解析（計算）
+    eval(parse) # 意味解析
   rescue StandardError => e
+    # TODO: ちゃんとしたエラーハンドリング
     puts e.message.to_s
     exit
   end
@@ -67,120 +68,104 @@ class Kantan
   # 意味解析
   def eval(exp)
     if exp.instance_of?(Array)
-      # p exp[0]
       case exp[0]
       when :block
         exp.each do |e|
           eval(e)
         end
-      when :add
+      when :add # 加算
         eval(exp[1]) + eval(exp[2])
-      when :sub
+      when :sub # 減算
         eval(exp[1]) - eval(exp[2])
-      when :mul
+      when :mul # 乗算
         eval(exp[1]) * eval(exp[2])
-      when :div
+      when :div # 除算
         eval(exp[1]) / eval(exp[2])
-      when :greater
+      when :greater # 大なり
         eval(exp[1]) > eval(exp[2])
-      when :less
+      when :less # 小なり
         eval(exp[1]) < eval(exp[2])
-      when :equal
+      when :equal # イコール
         eval(exp[1]) == eval(exp[2])
-      when :assignment
-        return @@space[@func_name][exp[1]] = eval(exp[2]) unless @@space[@func_name].nil?
+      when :assignment # 変数への代入
+        return @@space[@func_name][exp[1]] = eval(exp[2]) unless @@space[@func_name].nil? # 関数ないならローカル変数とする
 
+        @@space[exp[1]] = eval(exp[2]) # グローバル変数へ代入
+      when :global_assignment # グローバル変数への代入
         @@space[exp[1]] = eval(exp[2])
-      when :global_assignment
-        @@space[exp[1]] = eval(exp[2])
-      when :print
+      when :print # 標準出力
+        # 区切り文字で複数個並んでいる場合は結合して出力
         result = []
         exp[1].each do |e|
           result << eval(e).to_s.gsub(/改~/, "\n").gsub(/空~/, ' ')
         end
-
         result = result.join('')
         print result
-      when :read
+      when :read # 標準入力
         $stdin.gets.chomp
-      when :if
-        judge = case exp[1]
-                when true
-                  true
-                when false
-                  false
-                else
-                  eval(exp[1])
-                end
-
+      when :if # 条件分岐
+        # 条件式により処理を分岐
+        judge = eval(exp[1])
         if judge
           eval(exp[2])
         else
-          eval(exp[3]) unless exp[3].nil?
+          eval(exp[3]) unless exp[3].nil? # 異句があるば実行
         end
-      when :loop
-        judge = case exp[1]
-                when true
-                  true
-                when false
-                  false
-                else
-                  eval(exp[1])
-                end
-        while judge
-          eval(exp[2])
-          judge = case exp[1]
-                  when true
-                    true
-                  when false
-                    false
-                  else
-                    eval(exp[1])
-                  end
-          # break
-        end
-      when :function
-        @@space[exp[1]] = exp[2]
-        # p @@space
-        @@functions[exp[1]] = exp[3]
-      when :call_function
-        @func_name = exp[1]
-        raise SyntaxError, 'Error: Different number of arguments' if @@space[@func_name].length != exp[2].length
+      when :loop # 繰り返し
+        # 条件式の条件を満たしている間ループする
+        loop do
+          break unless eval(exp[1])
 
-        merged_keys = []
-        if @@func_names.length.positive?
-          @@space[@@func_names.last].each do |h|
-            if exp[2].include?(h[0])
-              @@space[@func_name].merge!(Hash[*h])
-              merged_keys << h[0]
+          eval(exp[2])
+        end
+      when :function # 関数定義
+        @@space[exp[1]] = exp[2] # 引数の変数名を格納
+        @@functions[exp[1]] = exp[3] # 関数ないの処理(ブロック)を格納
+      when :call_function # 関数呼び出し
+        @func_name = exp[1] # 実行する関数名を格納
+        raise SyntaxError, 'Error: Different number of arguments' if @@space[@func_name].length != exp[2].length # 定義した引数の数と合わない場合はエラー
+
+        # 関数内で他の関数を呼び出した場合の対処
+        # 呼び出し元の関数のローカル変数の中で、呼び出し先の関数の引数に設定されているものがあれば、呼び出し元の関数の変数と値を追加or上書きする
+        merged_keys = [] # 追加した変数のキーの格納場所
+        if @@func_names.length.positive? # 関数内で呼び出されているか
+          @@space[@@func_names.last].each do |h| # 呼び出し元の変数表を参照
+            if exp[2].include?(h[0]) # 現在の関数の引数に呼び出し元の変数が使われているか
+              @@space[@func_name].merge!(Hash[*h]) # 追加または書き換え
+              merged_keys << h[0] # 追加または書き換えた変数のキーを格納
             end
           end
         end
-        @@func_names << exp[1]
+        @@func_names << exp[1] # 現在の関数名を格納
 
+        # 引数に指定された値の格納と余分な呼び出し元のローカル変数の削除
         @@space[@func_name].each_with_index do |h, i|
-          @@space[@func_name][h[0]] = eval(exp[2][i]) unless exp[2][i].nil?
-          @@space[@func_name].delete_if { |key, _| merged_keys.include?(key) } if exp[2][i].nil?
+          @@space[@func_name][h[0]] = eval(exp[2][i]) unless exp[2][i].nil? # 指定された引数を現在の関数のローカル変数として格納
+          @@space[@func_name].delete_if { |key, _| merged_keys.include?(key) } if exp[2][i].nil? # 呼び出し元の変数のうち、引数の値としてのみ使われている変数を削除（同じローカル変数名だったら消さない）
         end
 
-        eval(@@functions[@func_name])
+        eval(@@functions[@func_name]) # 関数の中身(ブロック)の実行
 
-        @@func_names.pop
-        @func_name = @@func_names.last
-      when :string
-        exp[1]
+        @@func_names.pop # 実行が終わったら、@@func_namesから削除
+        @func_name = @@func_names.last # @func_nameを呼び出し元の関数名に戻す（呼び出し元がなければnil）
+      when :string # 文字列
+        exp[1] # 文字列なら値だけを返す
+      when :true # 真偽値(真)
+        true # trueを返す
+      when :false # 真偽値(偽)
+        false # falseを返す
       else
+        # TODO: ちゃんとしたエラーハンドリング
         raise SyntaxError, 'Error: SyntaxError'
       end
     else
-      # p @@space
-      # p exp
-      return @@space[@func_name][exp] if !@@space[@func_name].nil? && @@space[@func_name].key?(exp)
-      return @@space[exp] if @@space.key?(exp)
+      return @@space[@func_name][exp] if !@@space[@func_name].nil? && @@space[@func_name].key?(exp) # ローカル変数があれば、その関数のローカル変数での値を返す
+      return @@space[exp] if @@space.key?(exp) # グローバル変数の値を返す
 
-      raise SyntaxError, 'Error: Variable is not defined' if exp.is_a?(String)
+      # TODO: ちゃんとしたエラーハンドリング
+      raise SyntaxError, 'Error: Variable is not defined' if exp.is_a?(String) # 数値以外ならエラー（変数以外の文字列ならエラー）
 
-      exp
+      exp # 数値はそのまま返す
     end
   end
 
@@ -189,110 +174,60 @@ class Kantan
     pp sentences
   end
 
+  # 文列の要素を一つの配列として返す
+  # 文列 = 文 (文)*
   def sentences
     unless (s = sentence)
+      # TODO: ちゃんとしたエラーハンドリング
       raise Exception, 'あるべき文が見つからない'
     end
 
+    # 最初に呼ばれたのか、プログラム中で呼ばれたのかで用意する配列を分ける
     result = if s.empty?
                [:block]
              else
                [:block, s]
              end
-
+    # 文がある間、構文木を作り続ける
     while (s = sentence)
       result << s
     end
     result
   end
 
+  # 文を配列として返す
+  # 文 = 入文 | 世入文 | 如文 | 循文 | 刷文 | 読文 | 塊文
   def sentence
     token = get_token
-    return if token == :bad_token
+    return if token == :bad_token # TODO: ちゃんとしたエラーハンドリング
 
-    # p token
     case token
-    when :if
-      return conditionals
-    when :loop
-      return loop
-    when :function
-      return function
-    when :call_function
-      return call_function
-    when :print
-      return printing
-    when :block_start
-      return ''
-    when :block_end
-      return nil
-    when :end
-      return sentence
-    when :global_assign
-      return global_assignment
-    else
+    when :if # 如文のとき
+      conditionals
+    when :loop # 循文のとき
+      repetition
+    when :print # 刷文のとき
+      printing
+    when :function # 関数定義のとき
+      function
+    when :call_function # 関数呼び出しのとき
+      call_function
+    when :block_start # 塊文の開始時
+      ''
+    when :block_end # 塊文の終了時
+      nil
+    when :end # 了(文の終わり)のとき
+      sentence
+    when :global_assign # 世入文のとき
+      global_assignment
+    else # 入文のとき
       unget_token
-      return assignment
+      assignment
     end
   end
 
-  def call_function
-    func_name = get_token
-
-    token = get_token
-    raise Exception, '引がない' unless token == :argument_start
-
-    private_variables = []
-
-    token = get_token
-    while token != :argument_end
-      unless token == :separator
-        unget_token
-        private_variables << expression
-      end
-      token = get_token
-    end
-
-    get_token # :endの削除
-
-    return [:call_function, func_name, private_variables]
-  end
-
-  def function
-    func_name = get_token
-
-    raise Exception, '関数名が正しくない' unless func_name.instance_of?(String)
-
-    token = get_token
-    raise Exception, '引がない' unless token == :argument_start
-
-    private_variables = {}
-
-    token = get_token
-    while token != :argument_end
-      private_variables[token] = nil unless token == :separator
-      token = get_token
-    end
-
-    token = get_token
-    if token == :block_start
-      unget_token
-      block = sentences
-    end
-
-    return [:function, func_name, private_variables, block]
-  end
-
-  def loop
-    con_exp = comparison_operation
-    token = get_token
-    block = sentences if token == :loop_start
-
-    get_token # :endの削除
-
-    return [:loop, con_exp, block]
-  end
-
+  # 如文(if文)
+  # 如文 = '如' 式 '則' 文 '異' 文 '了'
   def conditionals
     con_exp = comparison_operation
     token = get_token
@@ -306,38 +241,23 @@ class Kantan
     end
     get_token # :endの削除
 
-    return [:if, con_exp, true_block, false_block]
+    [:if, con_exp, true_block, false_block]
   end
 
-  def assignment
-    var = get_token
-    raise Exception, '変数名が正しくない' unless var.instance_of?(String)
-
+  # 循文(loop文)
+  # 循文 = '循' 式 '開' 文 '了'
+  def repetition
+    con_exp = comparison_operation
     token = get_token
-    raise Exception, '入がない' unless token == :assign
+    block = sentences if token == :loop_start
 
-    token = get_token
-    case token
-    when :string_start
-      val = [:string, get_token]
-      get_token # "」"の削除
-    when :read
-      val = [:read]
-    else
-      unget_token
-      val = expression
-    end
     get_token # :endの削除
 
-    return [:assignment, var, val]
+    [:loop, con_exp, block]
   end
 
-  def global_assignment
-    result = assignment
-    result[0] = :global_assignment
-    return result
-  end
-
+  # 刷文(print文)
+  # 刷文 = '刷' ((式 | 文字列 | 真偽値 | 読文) '区')* (式 | 文字列 | 真偽値 | 読文) '了'
   def printing
     val = []
     while true do
@@ -360,23 +280,105 @@ class Kantan
       raise SyntaxError
     end
 
-    return [:print, val]
+    [:print, val]
   end
 
-  def comparison_operation
-    result = expression
-    token = get_token
+  # 関数定義
+  # 関数定義 = '能' 関数 '引' (変数'区')* 変数 '数' '始' 文列  '終'
+  def function
+    func_name = get_token
 
-    while (token == :greater) || (token == :less) || (token == :equal)
-      result = [token, result, expression]
+    raise Exception, '関数名が正しくない' unless func_name.instance_of?(String)
+
+    token = get_token
+    raise Exception, '引がない' unless token == :argument_start
+
+    private_variables = {}
+
+    token = get_token
+    while token != :argument_end
+      private_variables[token] = nil unless token == :separator
       token = get_token
-      # p result
     end
-    unget_token
+
+    token = get_token
+    if token == :block_start
+      unget_token
+      block = sentences
+    end
+
+    [:function, func_name, private_variables, block]
+  end
+
+  # 関数呼出
+  # 関数呼出 = '呼' 関数 '引' (式 | 文字列 | 真偽値)'区')* (式 | 文字列 | 真偽値) '数' '了'
+  def call_function
+    func_name = get_token
+
+    token = get_token
+    raise Exception, '引がない' unless token == :argument_start
+
+    private_variables = []
+
+    token = get_token
+    while token != :argument_end
+      unless token == :separator
+        unget_token
+        private_variables << expression
+      end
+      token = get_token
+    end
+
+    get_token # :endの削除
+
+    [:call_function, func_name, private_variables]
+  end
+
+  # 入文(代入文)
+  # 入文 = 変数 '入' (式 | 文字列 | 真偽値 | 読文) '了'
+  def assignment
+    var = get_token
+    raise Exception, '変数名が正しくない' unless var.instance_of?(String)
+
+    token = get_token
+    raise Exception, '入がない' unless token == :assign
+
+    token = get_token
+    case token
+    when :string_start
+      val = [:string, get_token]
+      get_token # "」"の削除
+    when :read
+      val = [:read]
+    else
+      unget_token
+      val = expression
+    end
+    get_token # :endの削除
+
+    [:assignment, var, val]
+  end
+
+  # 世入文(明示的なグローバル変数への代入文)
+  # 世入文 = '世' 変数 '入' (式 | 文字列 | 真偽値 | 読文) '了'
+  def global_assignment
+    result = assignment
+    result[0] = :global_assignment
     result
   end
 
-  # Expr -> Term (('+'|'-') Term)*
+  # 比較式
+  # 比較式 = 式 ('>'|'<'|'=') 式
+  def comparison_operation
+    exp = expression
+    token = get_token
+    raise SyntaxError unless (token == :greater) || (token == :less) || (token == :equal)
+
+    [token, exp, expression]
+  end
+
+  # 式
+  # 式 = 項 (('\+'|'-') 項)*
   def expression
     result = term
     token = get_token
@@ -390,7 +392,8 @@ class Kantan
     result
   end
 
-  # Term -> Fctr (('*'|'/') Fctr)*
+  # 項
+  # 項 = 因子 (('\*'|'/') 因子)*
   def term
     begin
       result = factor
@@ -409,43 +412,40 @@ class Kantan
     result
   end
 
-  # Fctr -> '(' Expr ')' | Num
+  # 因子
+  # 因子 = 数値リテラル | 変数 | 真偽値 | '(' 式 ')'
   def factor
     token = get_token
 
-    # p token
     case token
     when String
-      return token
+      token
     when Numeric
-      result = token
+      token
+    when :true
+      token
+    when :false
+      token
     when :lpar
       result = expression
       t = get_token # 閉じカッコを取り除く(使用しない)
       raise SyntaxError, 'Error: SyntaxError' unless t == :rpar
-    when :true
-      result = true
-    when :false
-      result = false
+
+      result
     else
-      # p token
       raise SyntaxError, 'Error: SyntaxError1'
     end
-    result
   end
 
-  # tokenを取得
+  # tokenを取得する
   def get_token
     token = @scanner.scan(/\A\s*(-?\d+)/)
-    # p token
     return token.strip.to_i if token
 
-    # p @@keywords.keys.map{|t|t}
     token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})\s+/)
     return @@keywords[token.strip] if token && (@@keywords[token.strip])
 
     token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々]|~)*/)
-    # p token
     return token.strip if token
 
     :bad_token
