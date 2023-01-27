@@ -238,14 +238,12 @@ class Kantan
   # 如文(if文)
   # 如文 = '如' 式 '則' 文 '異' 文 '了'
   def conditionals
-    con_exp = comparison_operation
-    token = get_token
-    raise SyntaxError, 'Incorrect syntax, expecting 則 in 如文' unless token == :then
+    con_exp = comparison_operation # 比較式をパージング
+    raise SyntaxError, 'Incorrect syntax, expecting 則 in 如文' unless get_token == :then # 比較式の後に則が来なければエラー
 
-    true_block = sentences
-    token = get_token
-    if token == :else
-      false_block = sentences
+    true_block = sentences # 真のときの文をパージング
+    if get_token == :else # 異句が続くか判定
+      false_block = sentences # 偽のときの文をパージング
     else
       unget_token
     end
@@ -260,11 +258,10 @@ class Kantan
   # 循文(loop文)
   # 循文 = '循' 式 '開' 文 '了'
   def repetition
-    con_exp = comparison_operation
-    token = get_token
-    raise SyntaxError, 'Incorrect syntax, expecting 開 in 循文' unless token == :loop_start
+    con_exp = comparison_operation # 比較式をパージング
+    raise SyntaxError, 'Incorrect syntax, expecting 開 in 循文' unless get_token == :loop_start # 比較式の後に開が来なければエラー
 
-    block = sentences
+    block = sentences # 循文の中身をパージング
     raise SyntaxError, 'Unexpected end-of-input, expecting end in 循文' unless get_token == :end # :endの削除
 
     [:loop, con_exp, block]
@@ -274,25 +271,27 @@ class Kantan
   end
 
   # 刷文(print文)
-  # 刷文 = '刷' ((式 | 文字列 | 真偽値 | 読文) '区')* (式 | 文字列 | 真偽値 | 読文) '了'
+  # 刷文 = '刷' ((式 | 文字列 | 読文) '区')* (式 | 文字列 | 読文) '了'
   def printing
-    val = []
+    val = [] # 出力する値の格納場所
     loop do
-      token = get_token
-      case token
-      when :string_start
+      case get_token
+      when :string_start # tokenが文字列のとき
         val << [:string, get_token]
         get_token # "」"の削除
-      when :read
+      when :read # tokenが読文のとき
         val << [:read]
-      else
+      else # tokenが式のとき
         unget_token
-        val << expression
+        val << expression # 式をパージングして格納
       end
 
-      token = get_token
-      next if token == :separator
-      break if token == :end
+      case get_token
+      when :separator # 区があるならループ続行
+        next
+      when :end # 了が来たらブレイク
+        break
+      end
 
       raise SyntaxError, '区 are not inserted correctly or Unexpected end-of-input, expecting end in 刷文'
     end
@@ -306,47 +305,44 @@ class Kantan
   # 関数定義
   # 関数定義 = '能' 関数 '引' (変数'区')* 変数 '数' '始' 文列  '終'
   def function
-    func_name = get_token
+    func_name = get_token # 関数名を取得
+    raise SyntaxError, 'Incorrect function name' unless func_name.instance_of?(String) # 関数名がStringでなければエラー
 
-    raise SyntaxError, 'Incorrect function name' unless func_name.instance_of?(String)
+    raise SyntaxError, 'Incorrect syntax, expecting 引 in 関数定義' unless get_token == :argument_start # 関数名の後に引が来なければエラー
 
-    raise SyntaxError, 'Incorrect syntax, expecting 引 in 関数定義' unless get_token == :argument_start
-
-    private_variables = {}
+    private_variables = {} # ローカル変数(引数)の格納場所
     loop do
-      private_variables[get_token] = nil
+      private_variables[get_token] = nil # 引数(変数)をハッシュとしてキーだけ格納
 
       token = get_token
-      raise SyntaxError, '区 or 数 are not inserted correctly in 関数定義' unless %i[separator argument_end].include?(token)
+      raise SyntaxError, '区 or 数 are not inserted correctly in 関数定義' unless %i[separator argument_end].include?(token) # 区か数が来なければエラー
 
-      break if token == :argument_end
+      break if token == :argument_end # 了が来たらブレイク
     end
-    raise SyntaxError, 'Incorrect syntax, expecting 始 in 関数定義' unless get_token == :block_start
+    raise SyntaxError, 'Incorrect syntax, expecting 始 in 関数定義' unless get_token == :block_start # 引数のあとに始が来なければエラー
 
     unget_token
 
-    [:function, func_name, private_variables, sentences]
+    [:function, func_name, private_variables, sentences] # 関数の中身をパージングして返す
   rescue Exception => e
     puts "#{e.class}: #{e.message}"
     exit!
   end
 
   # 関数呼出
-  # 関数呼出 = '呼' 関数 '引' (式 | 文字列 | 真偽値)'区')* (式 | 文字列 | 真偽値) '数' '了'
+  # 関数呼出 = '呼' 関数 '引' (式 | 文字列)'区')* (式 | 文字列) '数' '了'
   def call_function
-    func_name = get_token
-    raise SyntaxError, 'Incorrect syntax, expecting 引 in 関数呼出' unless get_token == :argument_start
+    func_name = get_token # 関数名を取得
+    raise SyntaxError, 'Incorrect syntax, expecting 引 in 関数呼出' unless get_token == :argument_start # 関数名の後に引が来なければエラー
 
-    private_variables = []
+    private_variables = [] # ローカル変数の格納場所
     loop do
-      private_variables << expression
+      private_variables << expression # 引数に指定された値を格納
 
       token = get_token
-      unless %i[separator argument_end].include?(token)
-        raise SyntaxError, '区 are not inserted correctly or Unexpected end-of-input, expecting end in 関数呼出'
-      end
+      raise SyntaxError, '区 or 数 are not inserted correctly in 関数呼出' unless %i[separator argument_end].include?(token) # 区か数が来なければエラー
 
-      break if token == :argument_end
+      break if token == :argument_end # 了が来たらブレイク
     end
     raise SyntaxError, 'Unexpected end-of-input, expecting end in 関数呼出' unless get_token == :end # :endの削除
 
@@ -357,22 +353,22 @@ class Kantan
   end
 
   # 入文(代入文)
-  # 入文 = 変数 '入' (式 | 文字列 | 真偽値 | 読文) '了'
+  # 入文 = 変数 '入' (式 | 文字列 | 読文) '了'
   def assignment
     var = get_token
-    raise SyntaxError, 'Incorrect variable name' unless var.instance_of?(String)
+    raise SyntaxError, 'Incorrect variable name' unless var.instance_of?(String) # 変数名ががStringでなければエラー
 
-    raise SyntaxError, 'Incorrect syntax, expecting 入 in 入文' unless get_token == :assign
+    raise SyntaxError, 'Incorrect syntax' unless get_token == :assign # 変数名の後に入が来なければエラー
 
     case get_token
-    when :string_start
+    when :string_start # tokenが文字列のとき
       val = [:string, get_token]
       get_token # "」"の削除
-    when :read
+    when :read # tokenが読文のとき
       val = [:read]
-    else
+    else # tokenが式のとき
       unget_token
-      val = expression
+      val = expression # 式をパージング
     end
     raise SyntaxError, 'Unexpected end-of-input, expecting end in 入文' unless get_token == :end # :endの削除
 
@@ -383,19 +379,19 @@ class Kantan
   end
 
   # 世入文(明示的なグローバル変数への代入文)
-  # 世入文 = '世' 変数 '入' (式 | 文字列 | 真偽値 | 読文) '了'
+  # 世入文 = '世' 変数 '入' (式 | 文字列 | 読文) '了'
   def global_assignment
-    result = assignment
-    result[0] = :global_assignment
+    result = assignment # 入文でパージングした結果を取得
+    result[0] = :global_assignment # :assignmentを:global_assignmentに書き換え
     result
   end
 
   # 比較式
   # 比較式 = 式 ('>'|'<'|'=') 式
   def comparison_operation
-    exp = expression
+    exp = expression # 式(左辺)をパージング
     token = get_token
-    raise SyntaxError, 'Incorrect syntax, expecting > or < or =' unless (token == :greater) || (token == :less) || (token == :equal)
+    raise SyntaxError, 'Incorrect syntax, expecting > or < or =' unless (token == :greater) || (token == :less) || (token == :equal) # 式の後に><=が来なければエラー
 
     [token, exp, expression]
   rescue Exception => e
@@ -406,10 +402,9 @@ class Kantan
   # 式
   # 式 = 項 (('+'|'-') 項)*
   def expression
-    result = term
+    result = term # 項をパージング
     token = get_token
-
-    while (token == :add) || (token == :sub)
+    while (token == :add) || (token == :sub) # +と-がある限り入れ子していく
       result = [token, result, term]
       token = get_token
     end
@@ -420,10 +415,9 @@ class Kantan
   # 項
   # 項 = 因子 (('*'|'/') 因子)*
   def term
-    result = factor
+    result = factor # 因子をパージング
     token = get_token
-
-    while (token == :mul) || (token == :div)
+    while (token == :mul) || (token == :div) # *と/がある限り入れ子していく
       result = [token, result, factor]
       token = get_token
     end
@@ -435,24 +429,23 @@ class Kantan
   # 因子 = 数値リテラル | 変数 | 真偽値 | '(' 式 ')'
   def factor
     token = get_token
-
     case token
-    when String
+    when String # tokenがString(変数)のとき
       token
-    when Numeric
+    when Numeric # tokenがNumeric(数値リテラル)のとき
       token
-    when :true
+    when :true # tokenが真偽値(真)のとき
       token
-    when :false
+    when :false # tokenが真偽値(偽)のとき
       token
-    when :lpar
-      result = expression
+    when :lpar # tokenが左カッコのとき
+      result = expression # カッコ内の式をパージング
       t = get_token # 閉じカッコを取り除く(使用しない)
-      raise SyntaxError, 'Incorrect syntax, expecting ) in 因子' unless t == :rpar
+      raise SyntaxError, 'Incorrect syntax, expecting ) in 因子' unless t == :rpar # 右カッコが来なければエラー
 
       result
     else
-      raise SyntaxError, 'Incorrect syntax'
+      raise SyntaxError, 'Incorrect syntax' # tokenが上のどれでもなければエラー
     end
   rescue Exception => e
     puts "#{e.class}: #{e.message}"
@@ -461,21 +454,21 @@ class Kantan
 
   # tokenを取得する
   def get_token
-    token = @scanner.scan(/\A\s*(-?\d+)/)
+    token = @scanner.scan(/\A\s*(-?\d+)/) # 数値リテラルをスキャン
     return token.strip.to_i if token
 
-    token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})\s+/)
+    token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})\s+/) # 予約語をスキャン
     return @@keywords[token.strip] if token && (@@keywords[token.strip])
 
-    token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々]|~)*/)
+    token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々]|~)*/) # 変数, 関数, 文字リテラルをスキャン
     return token.strip if token
 
-    :bad_token
+    :bad_token # スキャン出来なければ:bad_tokenを返す
   end
 
   # tokenを押し戻す
   def unget_token
-    @scanner.unscan
+    @scanner.unscan # ポインタを前回のスキャン位置に戻す
   rescue StringScanner::Error
     # Ignored
   end
