@@ -16,6 +16,7 @@ class Kantan
     '真' => :true,
     '偽' => :false,
     '入' => :assign,
+    '世' => :global_assign,
     '了' => :end,
     '始' => :block_start,
     '終' => :block_end,
@@ -38,8 +39,6 @@ class Kantan
   @@space = {}
 
   @@code = '' # 入力されたソースコードを格納
-
-  @@variables = {}
 
   @@functions = {}
 
@@ -92,10 +91,16 @@ class Kantan
         return @@space[@func_name][exp[1]] = eval(exp[2]) unless @@space[@func_name].nil?
 
         @@space[exp[1]] = eval(exp[2])
-        # p @@space
+      when :global_assignment
+        @@space[exp[1]] = eval(exp[2])
       when :print
-        val = eval(exp[1]).to_s.gsub(/改~/, "\n").gsub(/空~/, ' ')
-        print val
+        result = []
+        exp[1].each do |e|
+          result << eval(e).to_s.gsub(/改~/, "\n").gsub(/空~/, ' ')
+        end
+
+        result = result.join('')
+        print result
       when :read
         $stdin.gets.chomp
       when :if
@@ -174,6 +179,7 @@ class Kantan
       return @@space[exp] if @@space.key?(exp)
 
       raise SyntaxError, 'Error: Variable is not defined' if exp.is_a?(String)
+
       exp
     end
   end
@@ -222,6 +228,8 @@ class Kantan
       return nil
     when :end
       return sentence
+    when :global_assign
+      return global_assignment
     else
       unget_token
       return assignment
@@ -319,27 +327,39 @@ class Kantan
       unget_token
       val = expression
     end
-    @@variables[var] = val
     get_token # :endの削除
 
     return [:assignment, var, val]
   end
 
+  def global_assignment
+    result = assignment
+    result[0] = :global_assignment
+    return result
+  end
+
   def printing
-    token = get_token
-    case token
-    when :string_start
-      val = [:string, get_token]
-      get_token # "」"の削除
-    when :read
-      val = [:read]
-    when :bad_token
-      p 'きゃー！！！！'
-    else
-      unget_token
-      val = expression
+    val = []
+    while true do
+      token = get_token
+      case token
+      when :string_start
+        val << [:string, get_token]
+        get_token # "」"の削除
+      when :read
+        val << [:read]
+      else
+        unget_token
+        val << expression
+      end
+
+      token = get_token
+      next if token == :separator
+      break if token == :end
+
+      raise SyntaxError
     end
-    get_token # :endの削除
+
     return [:print, val]
   end
 
@@ -393,8 +413,7 @@ class Kantan
   def factor
     token = get_token
 
-    # return token if @@variables.key?(token)
-
+    # p token
     case token
     when String
       return token
@@ -409,7 +428,7 @@ class Kantan
     when :false
       result = false
     else
-      p token
+      # p token
       raise SyntaxError, 'Error: SyntaxError1'
     end
     result
