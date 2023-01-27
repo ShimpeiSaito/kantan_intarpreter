@@ -48,21 +48,19 @@ class Kantan
     # 実行ファイルの読み取り
     file = ARGV[0]
     lines = []
-    unless file.nil?
-      File.foreach(file) do |line|
-        lines.push(line)
-      end
-      @@code = lines.join
+    raise LoadError, 'No such file or directory' if file.nil? # 実行ファイルが見つからなければエラー
+
+    File.foreach(file) do |line|
+      lines.push(line)
     end
-    # puts @@code # 確認用
+    @@code = lines.join # @@codeにファイルの中身を格納
 
     @scanner = StringScanner.new(@@code) # スキャナーインスタンスの生成
 
     eval(parse) # 意味解析
   rescue StandardError => e
-    # TODO: ちゃんとしたエラーハンドリング
-    puts e.message.to_s
-    exit
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 意味解析
@@ -123,7 +121,7 @@ class Kantan
         @@functions[exp[1]] = exp[3] # 関数ないの処理(ブロック)を格納
       when :call_function # 関数呼び出し
         @func_name = exp[1] # 実行する関数名を格納
-        raise SyntaxError, 'Error: Different number of arguments' if @@space[@func_name].length != exp[2].length # 定義した引数の数と合わない場合はエラー
+        raise SyntaxError, 'Different number of arguments' if @@space[@func_name].length != exp[2].length # 定義した引数の数と合わない場合はエラー
 
         # 関数内で他の関数を呼び出した場合の対処
         # 呼び出し元の関数のローカル変数の中で、呼び出し先の関数の引数に設定されているものがあれば、呼び出し元の関数の変数と値を追加or上書きする
@@ -141,7 +139,9 @@ class Kantan
         # 引数に指定された値の格納と余分な呼び出し元のローカル変数の削除
         @@space[@func_name].each_with_index do |h, i|
           @@space[@func_name][h[0]] = eval(exp[2][i]) unless exp[2][i].nil? # 指定された引数を現在の関数のローカル変数として格納
-          @@space[@func_name].delete_if { |key, _| merged_keys.include?(key) } if exp[2][i].nil? # 呼び出し元の変数のうち、引数の値としてのみ使われている変数を削除（同じローカル変数名だったら消さない）
+          if exp[2][i].nil?
+            @@space[@func_name].delete_if { |key, _| merged_keys.include?(key) } # 呼び出し元の変数のうち、引数の値としてのみ使われている変数を削除（同じローカル変数名だったら消さない）
+          end
         end
 
         eval(@@functions[@func_name]) # 関数の中身(ブロック)の実行
@@ -155,31 +155,32 @@ class Kantan
       when :false # 真偽値(偽)
         false # falseを返す
       else
-        # TODO: ちゃんとしたエラーハンドリング
-        raise SyntaxError, 'Error: SyntaxError'
+        raise SyntaxError, 'Incorrect syntax'
       end
     else
       return @@space[@func_name][exp] if !@@space[@func_name].nil? && @@space[@func_name].key?(exp) # ローカル変数があれば、その関数のローカル変数での値を返す
       return @@space[exp] if @@space.key?(exp) # グローバル変数の値を返す
 
-      # TODO: ちゃんとしたエラーハンドリング
-      raise SyntaxError, 'Error: Variable is not defined' if exp.is_a?(String) # 数値以外ならエラー（変数以外の文字列ならエラー）
+      raise NameError, 'Variable is not defined' if exp.is_a?(String) # 数値以外ならエラー（変数以外の文字列ならエラー）
 
       exp # 数値はそのまま返す
     end
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # パーサー
   def parse
-    pp sentences
+    # pp sentences
+    sentences
   end
 
   # 文列の要素を一つの配列として返す
   # 文列 = 文 (文)*
   def sentences
     unless (s = sentence)
-      # TODO: ちゃんとしたエラーハンドリング
-      raise Exception, 'あるべき文が見つからない'
+      raise SyntaxError, 'Incorrect syntax'
     end
 
     # 最初に呼ばれたのか、プログラム中で呼ばれたのかで用意する配列を分ける
@@ -193,13 +194,18 @@ class Kantan
       result << s
     end
     result
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 文を配列として返す
   # 文 = 入文 | 世入文 | 如文 | 循文 | 刷文 | 読文 | 塊文
   def sentence
+    return if @scanner.eos?
+
     token = get_token
-    return if token == :bad_token # TODO: ちゃんとしたエラーハンドリング
+    raise SyntaxError, 'Incorrect syntax' if token == :bad_token
 
     case token
     when :if # 如文のとき
@@ -224,6 +230,9 @@ class Kantan
       unget_token
       assignment
     end
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 如文(if文)
@@ -231,17 +240,21 @@ class Kantan
   def conditionals
     con_exp = comparison_operation
     token = get_token
-    true_block = sentences if token == :then
+    raise SyntaxError, 'Incorrect syntax, expecting 則 in 如文' unless token == :then
 
+    true_block = sentences
     token = get_token
     if token == :else
       false_block = sentences
     else
       unget_token
     end
-    get_token # :endの削除
+    raise SyntaxError, 'Unexpected end-of-input, expecting end in 如文' unless get_token == :end # :endの削除
 
     [:if, con_exp, true_block, false_block]
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 循文(loop文)
@@ -249,18 +262,22 @@ class Kantan
   def repetition
     con_exp = comparison_operation
     token = get_token
-    block = sentences if token == :loop_start
+    raise SyntaxError, 'Incorrect syntax, expecting 開 in 循文' unless token == :loop_start
 
-    get_token # :endの削除
+    block = sentences
+    raise SyntaxError, 'Unexpected end-of-input, expecting end in 循文' unless get_token == :end # :endの削除
 
     [:loop, con_exp, block]
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 刷文(print文)
   # 刷文 = '刷' ((式 | 文字列 | 真偽値 | 読文) '区')* (式 | 文字列 | 真偽値 | 読文) '了'
   def printing
     val = []
-    while true do
+    loop do
       token = get_token
       case token
       when :string_start
@@ -277,10 +294,13 @@ class Kantan
       next if token == :separator
       break if token == :end
 
-      raise SyntaxError
+      raise SyntaxError, '区 are not inserted correctly or Unexpected end-of-input, expecting end in 刷文'
     end
 
     [:print, val]
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 関数定義
@@ -288,63 +308,63 @@ class Kantan
   def function
     func_name = get_token
 
-    raise Exception, '関数名が正しくない' unless func_name.instance_of?(String)
+    raise SyntaxError, 'Incorrect function name' unless func_name.instance_of?(String)
 
-    token = get_token
-    raise Exception, '引がない' unless token == :argument_start
+    raise SyntaxError, 'Incorrect syntax, expecting 引 in 関数定義' unless get_token == :argument_start
 
     private_variables = {}
+    loop do
+      private_variables[get_token] = nil
 
-    token = get_token
-    while token != :argument_end
-      private_variables[token] = nil unless token == :separator
       token = get_token
-    end
+      raise SyntaxError, '区 or 数 are not inserted correctly in 関数定義' unless %i[separator argument_end].include?(token)
 
-    token = get_token
-    if token == :block_start
-      unget_token
-      block = sentences
+      break if token == :argument_end
     end
+    raise SyntaxError, 'Incorrect syntax, expecting 始 in 関数定義' unless get_token == :block_start
 
-    [:function, func_name, private_variables, block]
+    unget_token
+
+    [:function, func_name, private_variables, sentences]
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 関数呼出
   # 関数呼出 = '呼' 関数 '引' (式 | 文字列 | 真偽値)'区')* (式 | 文字列 | 真偽値) '数' '了'
   def call_function
     func_name = get_token
-
-    token = get_token
-    raise Exception, '引がない' unless token == :argument_start
+    raise SyntaxError, 'Incorrect syntax, expecting 引 in 関数呼出' unless get_token == :argument_start
 
     private_variables = []
+    loop do
+      private_variables << expression
 
-    token = get_token
-    while token != :argument_end
-      unless token == :separator
-        unget_token
-        private_variables << expression
-      end
       token = get_token
-    end
+      unless %i[separator argument_end].include?(token)
+        raise SyntaxError, '区 are not inserted correctly or Unexpected end-of-input, expecting end in 関数呼出'
+      end
 
-    get_token # :endの削除
+      break if token == :argument_end
+    end
+    raise SyntaxError, 'Unexpected end-of-input, expecting end in 関数呼出' unless get_token == :end # :endの削除
 
     [:call_function, func_name, private_variables]
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 入文(代入文)
   # 入文 = 変数 '入' (式 | 文字列 | 真偽値 | 読文) '了'
   def assignment
     var = get_token
-    raise Exception, '変数名が正しくない' unless var.instance_of?(String)
+    raise SyntaxError, 'Incorrect variable name' unless var.instance_of?(String)
 
-    token = get_token
-    raise Exception, '入がない' unless token == :assign
+    raise SyntaxError, 'Incorrect syntax, expecting 入 in 入文' unless get_token == :assign
 
-    token = get_token
-    case token
+    case get_token
     when :string_start
       val = [:string, get_token]
       get_token # "」"の削除
@@ -354,9 +374,12 @@ class Kantan
       unget_token
       val = expression
     end
-    get_token # :endの削除
+    raise SyntaxError, 'Unexpected end-of-input, expecting end in 入文' unless get_token == :end # :endの削除
 
     [:assignment, var, val]
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 世入文(明示的なグローバル変数への代入文)
@@ -372,13 +395,16 @@ class Kantan
   def comparison_operation
     exp = expression
     token = get_token
-    raise SyntaxError unless (token == :greater) || (token == :less) || (token == :equal)
+    raise SyntaxError, 'Incorrect syntax, expecting > or < or =' unless (token == :greater) || (token == :less) || (token == :equal)
 
     [token, exp, expression]
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # 式
-  # 式 = 項 (('\+'|'-') 項)*
+  # 式 = 項 (('+'|'-') 項)*
   def expression
     result = term
     token = get_token
@@ -386,27 +412,20 @@ class Kantan
     while (token == :add) || (token == :sub)
       result = [token, result, term]
       token = get_token
-      # p result
     end
     unget_token
     result
   end
 
   # 項
-  # 項 = 因子 (('\*'|'/') 因子)*
+  # 項 = 因子 (('*'|'/') 因子)*
   def term
-    begin
-      result = factor
+    result = factor
+    token = get_token
+
+    while (token == :mul) || (token == :div)
+      result = [token, result, factor]
       token = get_token
-      # p token
-      while (token == :mul) || (token == :div)
-        result = [token, result, factor]
-        token = get_token
-        # p result
-      end
-    rescue SyntaxError => e
-      puts e.message.to_s
-      exit
     end
     unget_token
     result
@@ -429,12 +448,15 @@ class Kantan
     when :lpar
       result = expression
       t = get_token # 閉じカッコを取り除く(使用しない)
-      raise SyntaxError, 'Error: SyntaxError' unless t == :rpar
+      raise SyntaxError, 'Incorrect syntax, expecting ) in 因子' unless t == :rpar
 
       result
     else
-      raise SyntaxError, 'Error: SyntaxError1'
+      raise SyntaxError, 'Incorrect syntax'
     end
+  rescue Exception => e
+    puts "#{e.class}: #{e.message}"
+    exit!
   end
 
   # tokenを取得する
