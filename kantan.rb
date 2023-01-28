@@ -77,7 +77,7 @@ class Kantan
       when :mul # 乗算
         eval(exp[1]) * eval(exp[2])
       when :div # 除算
-        eval(exp[1]) / eval(exp[2])
+        eval(exp[1]).fdiv(eval(exp[2]))
       when :greater # 大なり
         eval(exp[1]) > eval(exp[2])
       when :less # 小なり
@@ -85,7 +85,7 @@ class Kantan
       when :equal # イコール
         eval(exp[1]) == eval(exp[2])
       when :assignment # 変数への代入
-        return @@space[@func_name][exp[1]] = eval(exp[2]) unless @@space[@func_name].nil? # 関数ないならローカル変数とする
+        return @@space[@func_name][exp[1]] = eval(exp[2]) unless @@space[@func_name].nil? # 関数内ならローカル変数とする
 
         @@space[exp[1]] = eval(exp[2]) # グローバル変数へ代入
       when :global_assignment # グローバル変数への代入
@@ -125,14 +125,13 @@ class Kantan
         end
       when :function # 関数定義
         @@space[exp[1]] = exp[2] # 引数の変数名を格納
-        @@functions[exp[1]] = exp[3] # 関数ないの処理(ブロック)を格納
+        @@functions[exp[1]] = exp[3] # 関数内の処理(ブロック)を格納
       when :call_function # 関数呼び出し
         @func_name = exp[1] # 実行する関数名を格納
         raise NameError, 'This function is not defined' if @@space[@func_name].nil?
 
-        if @@space[@func_name].length != exp[2].length # 定義した引数の数と合わない場合はエラー
-          raise SyntaxError, 'Different number of arguments'
-        end
+        arguments = @@space[@func_name].dup
+        raise SyntaxError, 'Different number of arguments' if arguments.length != exp[2].length # 定義した引数の数と合わない場合はエラー
 
         # 関数内で他の関数を呼び出した場合の対処
         # 呼び出し元の関数のローカル変数の中で、呼び出し先の関数の引数に設定されているものがあれば、呼び出し元の関数の変数と値を追加or上書きする
@@ -157,6 +156,7 @@ class Kantan
 
         eval(@@functions[@func_name]) # 関数の中身(ブロック)の実行
 
+        @@space[@func_name] = arguments # 関数内で定義したローカル変数を初期化
         @@func_names.pop # 実行が終わったら、@@func_namesから削除
         @func_name = @@func_names.last # @func_nameを呼び出し元の関数名に戻す（呼び出し元がなければnil）
       when :string # 文字列
@@ -169,9 +169,9 @@ class Kantan
         raise SyntaxError, 'Incorrect syntax'
       end
     else
-      if !@@space[@func_name].nil? && @@space[@func_name].key?(exp)
-        return @@space[@func_name][exp]
-      end # ローカル変数があれば、その関数のローカル変数での値を返す
+      if !@@space[@func_name].nil? && @@space[@func_name].key?(exp) && !@@space[@func_name][exp].nil?
+        return @@space[@func_name][exp] # ローカル変数があれば、その関数のローカル変数での値を返す
+      end
       return @@space[exp] if @@space.key?(exp) # グローバル変数の値を返す
 
       raise NameError, 'Variable is not defined' if exp.is_a?(String) # 数値以外ならエラー（変数以外の文字列ならエラー）
@@ -179,7 +179,11 @@ class Kantan
       exp # 数値はそのまま返す
     end
   rescue Exception => e
-    puts "#{e.class}: #{e.message}"
+    if e.class == NoMethodError
+      puts "#{e.class}: Incorrect value"
+    else
+      puts "#{e.class}: #{e.message}"
+    end
     exit!
   end
 
@@ -260,7 +264,8 @@ class Kantan
     else
       unget_token
     end
-    raise SyntaxError, 'Unexpected end-of-input, expecting end in 如文' unless get_token == :end # :endの削除
+
+    raise SyntaxError, 'Unexpected end-of-input, expecting 了 in 如文' unless get_token == :end # :endの削除
 
     [:if, con_exp, true_block, false_block]
   rescue Exception => e
@@ -275,7 +280,7 @@ class Kantan
     raise SyntaxError, 'Incorrect syntax, expecting 開 in 循文' unless get_token == :loop_start # 比較式の後に開が来なければエラー
 
     block = sentences # 循文の中身をパージング
-    raise SyntaxError, 'Unexpected end-of-input, expecting end in 循文' unless get_token == :end # :endの削除
+    raise SyntaxError, 'Unexpected end-of-input, expecting 了 in 循文' unless get_token == :end # :endの削除
 
     [:loop, con_exp, block]
   rescue Exception => e
@@ -306,7 +311,7 @@ class Kantan
         break
       end
 
-      raise SyntaxError, '区 are not inserted correctly or Unexpected end-of-input, expecting end in 刷文'
+      raise SyntaxError, '区 are not inserted correctly or Unexpected end-of-input, expecting 了 in 刷文'
     end
 
     [:print, val]
@@ -329,8 +334,8 @@ class Kantan
 
       token = get_token
       unless %i[separator argument_end].include?(token)
-        raise SyntaxError, '区 or 数 are not inserted correctly in 関数定義'
-      end # 区か数が来なければエラー
+        raise SyntaxError, '区 or 数 are not inserted correctly in 関数定義' # 区か数が来なければエラー
+      end
 
       break if token == :argument_end # 了が来たらブレイク
     end
@@ -356,12 +361,12 @@ class Kantan
 
       token = get_token
       unless %i[separator argument_end].include?(token)
-        raise SyntaxError, '区 or 数 are not inserted correctly in 関数呼出'
-      end # 区か数が来なければエラー
+        raise SyntaxError, '区 or 数 are not inserted correctly in 関数呼出' # 区か数が来なければエラー
+      end
 
       break if token == :argument_end # 了が来たらブレイク
     end
-    raise SyntaxError, 'Unexpected end-of-input, expecting end in 関数呼出' unless get_token == :end # :endの削除
+    raise SyntaxError, 'Unexpected end-of-input, expecting 了 in 関数呼出' unless get_token == :end # :endの削除
 
     [:call_function, func_name, private_variables]
   rescue Exception => e
@@ -387,7 +392,7 @@ class Kantan
       unget_token
       val = expression # 式をパージング
     end
-    raise SyntaxError, 'Unexpected end-of-input, expecting end in 入文' unless get_token == :end # :endの削除
+    raise SyntaxError, 'Unexpected end-of-input, expecting 了 in 入文' unless get_token == :end # :endの削除
 
     [:assignment, var, val]
   rescue Exception => e
@@ -409,8 +414,8 @@ class Kantan
     exp = expression # 式(左辺)をパージング
     token = get_token
     unless (token == :greater) || (token == :less) || (token == :equal)
-      raise SyntaxError, 'Incorrect syntax, expecting 大 or 小 or 同'
-    end # 式の後に大, 小, 同が来なければエラー
+      raise SyntaxError, 'Incorrect syntax, expecting 大 or 小 or 同' # 式の後に大, 小, 同が来なければエラー
+    end
 
     [token, exp, expression]
   rescue Exception => e
@@ -475,7 +480,7 @@ class Kantan
   def get_token
     @scanner.scan(/\A\s*言 *.*\n/) # コメントをスキャン(コメントを取り除く)
 
-    token = @scanner.scan(/\A\s*(-?\d+)/) # 数値リテラルをスキャン
+    token = @scanner.scan(/\A\s*(-?\d+(?:\.\d+)?)/) # 数値リテラルをスキャン
     return token.strip.to_i if token
 
     token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})\s+/) # 予約語をスキャン
