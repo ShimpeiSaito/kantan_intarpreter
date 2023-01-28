@@ -99,7 +99,15 @@ class Kantan
         result = result.join('')
         print result
       when :read # 標準入力
-        $stdin.gets.chomp
+        begin
+          input = $stdin.gets.chomp
+          float = Float(input)
+          return Integer(input) if (float - float.to_i).zero?
+
+          float
+        rescue StandardError
+          input
+        end
       when :if # 条件分岐
         # 条件式により処理を分岐
         judge = eval(exp[1])
@@ -120,7 +128,9 @@ class Kantan
         @@functions[exp[1]] = exp[3] # 関数ないの処理(ブロック)を格納
       when :call_function # 関数呼び出し
         @func_name = exp[1] # 実行する関数名を格納
-        raise SyntaxError, 'Different number of arguments' if @@space[@func_name].length != exp[2].length # 定義した引数の数と合わない場合はエラー
+        if @@space[@func_name].length != exp[2].length
+          raise SyntaxError, 'Different number of arguments'
+        end # 定義した引数の数と合わない場合はエラー
 
         # 関数内で他の関数を呼び出した場合の対処
         # 呼び出し元の関数のローカル変数の中で、呼び出し先の関数の引数に設定されているものがあれば、呼び出し元の関数の変数と値を追加or上書きする
@@ -157,7 +167,9 @@ class Kantan
         raise SyntaxError, 'Incorrect syntax'
       end
     else
-      return @@space[@func_name][exp] if !@@space[@func_name].nil? && @@space[@func_name].key?(exp) # ローカル変数があれば、その関数のローカル変数での値を返す
+      if !@@space[@func_name].nil? && @@space[@func_name].key?(exp)
+        return @@space[@func_name][exp]
+      end # ローカル変数があれば、その関数のローカル変数での値を返す
       return @@space[exp] if @@space.key?(exp) # グローバル変数の値を返す
 
       raise NameError, 'Variable is not defined' if exp.is_a?(String) # 数値以外ならエラー（変数以外の文字列ならエラー）
@@ -314,7 +326,9 @@ class Kantan
       private_variables[get_token] = nil # 引数(変数)をハッシュとしてキーだけ格納
 
       token = get_token
-      raise SyntaxError, '区 or 数 are not inserted correctly in 関数定義' unless %i[separator argument_end].include?(token) # 区か数が来なければエラー
+      unless %i[separator argument_end].include?(token)
+        raise SyntaxError, '区 or 数 are not inserted correctly in 関数定義'
+      end # 区か数が来なければエラー
 
       break if token == :argument_end # 了が来たらブレイク
     end
@@ -339,7 +353,9 @@ class Kantan
       private_variables << expression # 引数に指定された値を格納
 
       token = get_token
-      raise SyntaxError, '区 or 数 are not inserted correctly in 関数呼出' unless %i[separator argument_end].include?(token) # 区か数が来なければエラー
+      unless %i[separator argument_end].include?(token)
+        raise SyntaxError, '区 or 数 are not inserted correctly in 関数呼出'
+      end # 区か数が来なければエラー
 
       break if token == :argument_end # 了が来たらブレイク
     end
@@ -390,7 +406,9 @@ class Kantan
   def comparison_operation
     exp = expression # 式(左辺)をパージング
     token = get_token
-    raise SyntaxError, 'Incorrect syntax, expecting 大 or 小 or 同' unless (token == :greater) || (token == :less) || (token == :equal) # 式の後に大, 小, 同が来なければエラー
+    unless (token == :greater) || (token == :less) || (token == :equal)
+      raise SyntaxError, 'Incorrect syntax, expecting 大 or 小 or 同'
+    end # 式の後に大, 小, 同が来なければエラー
 
     [token, exp, expression]
   rescue Exception => e
