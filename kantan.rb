@@ -1,18 +1,17 @@
 require 'strscan'
-require 'pp'
 
 class Kantan
   # 予約語表
   @@keywords = {
-    '+' => :add,
-    '-' => :sub,
-    '*' => :mul,
-    '/' => :div,
-    '>' => :greater,
-    '<' => :less,
-    '=' => :equal,
-    '(' => :lpar,
-    ')' => :rpar,
+    '加' => :add,
+    '減' => :sub,
+    '乗' => :mul,
+    '除' => :div,
+    '大' => :greater,
+    '小' => :less,
+    '同' => :equal,
+    '括' => :lpar,
+    '弧' => :rpar,
     '真' => :true,
     '偽' => :false,
     '入' => :assign,
@@ -27,8 +26,8 @@ class Kantan
     '開' => :loop_start,
     '刷' => :print,
     '読' => :read,
-    '「' => :string_start,
-    '」' => :string_end,
+    '文' => :string_start,
+    '字' => :string_end,
     '能' => :function,
     '呼' => :call_function,
     '引' => :argument_start,
@@ -95,7 +94,7 @@ class Kantan
         # 区切り文字で複数個並んでいる場合は結合して出力
         result = []
         exp[1].each do |e|
-          result << eval(e).to_s.gsub(/改~/, "\n").gsub(/空~/, ' ')
+          result << eval(e).to_s.gsub(/殊改/, "\n").gsub(/殊空/, ' ')
         end
         result = result.join('')
         print result
@@ -387,11 +386,11 @@ class Kantan
   end
 
   # 比較式
-  # 比較式 = 式 ('>'|'<'|'=') 式
+  # 比較式 = 式 ('大'|'小'|'同') 式
   def comparison_operation
     exp = expression # 式(左辺)をパージング
     token = get_token
-    raise SyntaxError, 'Incorrect syntax, expecting > or < or =' unless (token == :greater) || (token == :less) || (token == :equal) # 式の後に><=が来なければエラー
+    raise SyntaxError, 'Incorrect syntax, expecting 大 or 小 or 同' unless (token == :greater) || (token == :less) || (token == :equal) # 式の後に大, 小, 同が来なければエラー
 
     [token, exp, expression]
   rescue Exception => e
@@ -400,11 +399,11 @@ class Kantan
   end
 
   # 式
-  # 式 = 項 (('+'|'-') 項)*
+  # 式 = 項 (('加'|'減') 項)*
   def expression
     result = term # 項をパージング
     token = get_token
-    while (token == :add) || (token == :sub) # +と-がある限り入れ子していく
+    while (token == :add) || (token == :sub) # 加と減がある限り入れ子していく
       result = [token, result, term]
       token = get_token
     end
@@ -413,11 +412,11 @@ class Kantan
   end
 
   # 項
-  # 項 = 因子 (('*'|'/') 因子)*
+  # 項 = 因子 (('乗'|'除') 因子)*
   def term
     result = factor # 因子をパージング
     token = get_token
-    while (token == :mul) || (token == :div) # *と/がある限り入れ子していく
+    while (token == :mul) || (token == :div) # 乗と除がある限り入れ子していく
       result = [token, result, factor]
       token = get_token
     end
@@ -426,7 +425,7 @@ class Kantan
   end
 
   # 因子
-  # 因子 = 数値リテラル | 変数 | 真偽値 | '(' 式 ')'
+  # 因子 = 数値リテラル | 変数 | 真偽値 | '括' 式 '弧'
   def factor
     token = get_token
     case token
@@ -438,10 +437,10 @@ class Kantan
       token
     when :false # tokenが真偽値(偽)のとき
       token
-    when :lpar # tokenが左カッコのとき
-      result = expression # カッコ内の式をパージング
-      t = get_token # 閉じカッコを取り除く(使用しない)
-      raise SyntaxError, 'Incorrect syntax, expecting ) in 因子' unless t == :rpar # 右カッコが来なければエラー
+    when :lpar # tokenが括のとき
+      result = expression # 括弧内の式をパージング
+      t = get_token # 弧を取り除く(使用しない)
+      raise SyntaxError, 'Incorrect syntax, expecting ) in 因子' unless t == :rpar # 弧が来なければエラー
 
       result
     else
@@ -454,13 +453,15 @@ class Kantan
 
   # tokenを取得する
   def get_token
+    @scanner.scan(/\A\s*言 *.*\n/) # コメントをスキャン(コメントを取り除く)
+
     token = @scanner.scan(/\A\s*(-?\d+)/) # 数値リテラルをスキャン
     return token.strip.to_i if token
 
     token = @scanner.scan(/\A\s*(#{@@keywords.keys.map { |t| t }})\s+/) # 予約語をスキャン
     return @@keywords[token.strip] if token && (@@keywords[token.strip])
 
-    token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々])([a-zA-Z]|[0-9]|_|\p{Hiragana}|\p{Katakana}|[ー－]|[一-龠々]|~)*/) # 変数, 関数, 文字リテラルをスキャン
+    token = @scanner.scan(/\A\s*([a-zA-Z]|\p{Hiragana}|\p{Katakana}|\p{Han})\S*/) # 変数, 関数, 文字リテラルをスキャン
     return token.strip if token
 
     :bad_token # スキャン出来なければ:bad_tokenを返す
