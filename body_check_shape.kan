@@ -1,0 +1,63 @@
+言 身長と体重からBMIを計算し、体型を評価するプログラム
+
+能 BMI計算 引 height 区 weight 数 始
+    height_m 入 height 除 100 了  言 cmをmに変換
+    result 入 weight 除 括 height_m 乗 height_m 弧 了  言 bmiを計算
+    世 bmi 入 result 了
+終
+
+能 体型確認 引 height 区 weight 数  始
+    呼 BMI計算 引 height 区 weight 数 了
+
+    如 bmi 小 30.0 則
+        始
+            shape 入 文 肥満 字 了
+            如 bmi 小 25.0 則
+                始
+                    shape 入 文 標準 字 了
+                    如 bmi 小 18.5 則
+                        始
+                            shape 入 文 やせ型 字 了
+                        終
+                    了
+                終
+            了
+        終
+    異
+        始
+            shape 入 文 高度な肥満 字 了
+        終
+    了
+
+    世 body_shape 入 shape 了
+終
+
+
+刷 文 身長と体重からBMIを計算し、体型を推測します。中止する場合は0を入力してください。殊改殊改 字 了
+
+continue 入 真 了
+循 continue 同 真 開
+    始
+        刷 文 身長を入力してください殊改 字 了
+        刷 文 身長(cm): 字 了
+        my_height 入 読 了
+
+        刷 文 体重を入力してください殊改 字 了
+        刷 文 体重(kg): 字 了
+        my_weight 入 読 了
+
+        呼 体型確認 引 my_height 区 my_weight 数 了
+
+        刷 文 殊改 字 了
+        刷 文 BMI値:殊空 字 区 bmi 区 文 殊改 字 了
+        刷 文 体型:殊空 字 区 body_shape 区 文 殊改殊改 字 了
+
+        刷 文 続けますか？殊改 字 了
+        input 入 読 了
+        如 input 同 0 則  言 0が入力されたら終了
+            始
+                continue 入 偽 了
+            終
+        了
+    終
+了
