@@ -100,13 +100,13 @@ class Kantan
         print result
       when :read # 標準入力
         begin
-          input = $stdin.gets.chomp
-          float = Float(input)
-          return Integer(input) if (float - float.to_i).zero?
+          input = $stdin.gets.chomp # 入力を受け取る
+          float = Float(input) # floatへの変換を試みる
+          return Integer(input) if (float - float.to_i).zero? # 整数値かを確認、整数ならintegerとする
 
           float
         rescue StandardError
-          input
+          input # 数値への変換に失敗した場合は文字列のまま返す
         end
       when :if # 条件分岐
         # 条件式により処理を分岐
@@ -128,9 +128,11 @@ class Kantan
         @@functions[exp[1]] = exp[3] # 関数ないの処理(ブロック)を格納
       when :call_function # 関数呼び出し
         @func_name = exp[1] # 実行する関数名を格納
-        if @@space[@func_name].length != exp[2].length
+        raise NameError, 'This function is not defined' if @@space[@func_name].nil?
+
+        if @@space[@func_name].length != exp[2].length # 定義した引数の数と合わない場合はエラー
           raise SyntaxError, 'Different number of arguments'
-        end # 定義した引数の数と合わない場合はエラー
+        end
 
         # 関数内で他の関数を呼び出した場合の対処
         # 呼び出し元の関数のローカル変数の中で、呼び出し先の関数の引数に設定されているものがあれば、呼び出し元の関数の変数と値を追加or上書きする
