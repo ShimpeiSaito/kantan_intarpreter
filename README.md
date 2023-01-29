@@ -8,6 +8,8 @@
 
 漢単は手続き型言語の基本構造である逐次実行と如文（一般的にif文）による分岐、循文（一般的にwhile文）による繰り返し、複数の式をまとめるブロック化の機能、関数定義・呼出機能の5つの機能のみを持つ。変数や代入文の使用は可能であるが、入出力は特別な文の読文、刷文として表現される。拡張子は"*.kan"。
 
+漢単(kantan)で"Hello World!"という文字を出力するコードは以下のようになる。
+
 *hello_world.kan*
 
 ```kantan
@@ -44,3 +46,44 @@
 - 関数 = /^([a-zA-Z]|\p{Hiragana}|\p{Katakana}|\p{Han})\S\*$/
 - 言文(コメントアウト) = /^言 \*.\*\n$/
 
+
+
+## 注意点
+
+構文中の字句("入", "了", "読")などの前後には空白文字が必須である。特に最終行では改行を行うことを忘れないでほしい。これによって、自然と読みやすいコードになるはずである。
+
+刷文では改行は行われないため、改行したい場合は"殊改"という特殊文字を文字列に含める必要がある。また、空白を挿入したい場合も"殊空"という特殊文字を使う必要がある。
+
+循文ではbreak文に相当する文が用意されていないため、自分で制御変数を定義する必要がある。
+
+関数を定義し、呼び出すことはできるがreturn文に相当する文が用意されていないため、グローバル変数への代入を用いて値を取得する必要がある。
+
+
+
+## サンプルコード
+
+#### factorial.kan
+
+https://github.com/ShimpeiSaito/kantan_intarpreter/blob/master/samples/factorial.kan
+
+*実行結果*
+
+<img src="https://github.com/ShimpeiSaito/kantan_intarpreter/blob/master/samples/result/factorial.jpg" width="50%">
+
+
+
+#### body_check_shape.kan
+
+https://github.com/ShimpeiSaito/kantan_intarpreter/blob/master/samples/body_check_shape.kan
+
+*実行結果*
+
+<img src="https://github.com/ShimpeiSaito/kantan_intarpreter/blob/master/samples/result/body_check_shape.jpg" width="50%">
+
+
+
+## Githubリンク
+
+https://github.com/ShimpeiSaito/kantan_intarpreter
+
+[//]: # ()

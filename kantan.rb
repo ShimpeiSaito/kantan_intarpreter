@@ -34,13 +34,9 @@ class Kantan
     '区' => :separator,
     '数' => :argument_end
   }
-
   @@code = '' # 入力されたソースコードの格納場所
-
   @@space = {} # グローバル変数及び関数ごとのローカル変数の格納場所
-
   @@functions = {} # 関数のブロック(中身)の格納場所
-
   @@func_names = [] # 実行中の関数名の格納場所
 
   def initialize
@@ -67,7 +63,7 @@ class Kantan
     if exp.instance_of?(Array)
       case exp[0]
       when :block
-        exp.each do |e|
+        exp[1..].each do |e|
           eval(e)
         end
       when :add # 加算
@@ -217,7 +213,7 @@ class Kantan
   end
 
   # 文を配列として返す
-  # 文 = 入文 | 世入文 | 如文 | 循文 | 刷文 | 読文 | 塊文
+  # 文 = 入文 | 世入文 | 如文 | 循文 | 刷文 | 読文
   def sentence
     return if @scanner.eos?
 
@@ -377,7 +373,7 @@ class Kantan
   # 入文(代入文)
   # 入文 = 変数 '入' (式 | 文字列 | 読文) '了'
   def assignment
-    var = get_token
+    var = get_token # 変数名を取得
     raise SyntaxError, 'Incorrect variable name' unless var.instance_of?(String) # 変数名ががStringでなければエラー
 
     raise SyntaxError, 'Incorrect syntax' unless get_token == :assign # 変数名の後に入が来なければエラー
